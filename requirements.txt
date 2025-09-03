@@ -1,0 +1,53 @@
+# Core ML libraries
+torch>=2.0.0
+transformers>=4.55.4
+datasets>=3.4.1,<4.0.0
+huggingface_hub>=0.34.0
+
+# Unsloth and related packages
+unsloth
+bitsandbytes
+accelerate
+peft
+trl
+triton
+cut_cross_entropy
+unsloth_zoo
+
+# Audio processing
+torchaudio
+librosa
+snac
+sentencepiece
+protobuf
+
+# Data processing and utilities
+numpy
+scipy
+pandas
+psutil
+
+# Web interface
+gradio>=4.0.0
+
+# Optional: for Jupyter notebook support
+ipython
+ipywidgets
+
+# Optional: for model uploading
+hf_transfer
+
+# Optional: for better performance
+xformers
+
+# Optional: for visualization and monitoring
+matplotlib
+seaborn
+wandb
+
+# Development and testing
+pytest
+pytest-cov
+black
+flake8
+isort
