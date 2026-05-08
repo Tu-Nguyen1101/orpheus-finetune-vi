@@ -1,173 +1,226 @@
-# 🇻🇳 Orpheus TTS - Vietnamese Training
+# Orpheus TTS - Vietnamese Training
 
-Simplified, optimized implementation for training Orpheus TTS with Vietnamese datasets.
+Training setup for fine-tuning Orpheus TTS on a Vietnamese dataset.
 
-## 📁 Project Structure
+## Project Structure
 
-```
+```text
 orpheus_training/
-├── config.py              # All configurations (basic + H100)
-├── utils.py               # Audio processing utilities  
-├── data_processor.py      # Dataset loading & preprocessing
-├── model_manager.py       # Model loading & saving
-├── train.py              # Standard training (with max_samples limit)
-├── train_full_dataset.py  # Full dataset training (batch processing)
-├── inference.py          # Inference script
-├── requirements.txt      # Dependencies
-├── metadata.csv          # Your dataset (156K samples)
-└── README.md            # This file
+├── config.py
+├── data_processor.py
+├── model_manager.py
+├── train.py
+├── inference.py
+├── metadata.csv
+├── data_tonghop/
+├── requirements.txt
+├── requirements-gpu.txt
+├── start_training_gpu.ps1
+└── README.md
 ```
 
-## 🚀 Quick Start
+## Windows GPU Setup
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
+Use a local virtual environment so the project does not depend on the global Python install.
+
+```powershell
+cd "D:\Ai Companion\orpheus-finetune-vi"
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-gpu.txt
 ```
 
-### 2. Training
+Install `requirements-gpu.txt` after `requirements.txt`. This keeps PyTorch CUDA-enabled and avoids pip replacing it with a CPU-only build.
 
-#### Basic Training
+Verify CUDA:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+```
+
+Expected on this machine:
+
+```text
+torch 2.10.0+cu128
+cuda True
+NVIDIA GeForce RTX 3050 Laptop GPU
+```
+
+## GPU Smoke Test
+
+Run this first before training larger datasets:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_training_gpu.ps1
+```
+
+The smoke test uses conservative settings for RTX 3050 4GB:
+
+```text
+max_samples: 200
+max_steps: 20
+batch_size: 1
+gradient_accumulation_steps: 8
+load_in_4bit: true
+max_seq_length: 2048
+lora_rank: 16
+precision: bf16
+save_lora_only: true
+```
+
+The first run needs internet access to download the model from Hugging Face.
+
+## Manual Training Commands
+
+### Low-VRAM GPU Test
+
+```powershell
+.\.venv\Scripts\python.exe train.py `
+    --device cuda `
+    --csv_path "metadata.csv" `
+    --audio_dir ".\data_tonghop" `
+    --save_dir "gpu_test_model" `
+    --max_samples 200 `
+    --max_steps 20 `
+    --batch_size 1 `
+    --gradient_accumulation_steps 8 `
+    --load_in_4bit `
+    --max_seq_length 2048 `
+    --lora_rank 16 `
+    --lora_alpha 16 `
+    --bf16 `
+    --low_vram `
+    --save_lora_only
+```
+
+### Increase Gradually
+
+After the smoke test succeeds, increase slowly:
+
+```powershell
+.\.venv\Scripts\python.exe train.py `
+    --device cuda `
+    --csv_path "metadata.csv" `
+    --audio_dir ".\data_tonghop" `
+    --save_dir "model_1k" `
+    --max_samples 1000 `
+    --max_steps 100 `
+    --batch_size 1 `
+    --gradient_accumulation_steps 8 `
+    --load_in_4bit `
+    --max_seq_length 2048 `
+    --lora_rank 16 `
+    --lora_alpha 16 `
+    --bf16 `
+    --low_vram `
+    --save_lora_only
+```
+
+### Quality Run On RTX 3050 4GB
+
+The 20-step and 100-step runs are only smoke tests. For noticeably better Vietnamese audio, train on most of the dataset for more optimizer steps:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_training_quality_gpu.ps1
+```
+
+Default quality settings:
+
+```text
+max_samples: 7000
+max_steps: 2000
+batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1e-4
+warmup_steps: 200
+load_in_4bit: true
+max_seq_length: 2048
+lora_rank: 16
+lora_alpha: 16
+precision: bf16
+save_lora_only: true
+```
+
+Resume a stopped run from the latest checkpoint:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_training_quality_gpu.ps1 `
+    -ResumeFromCheckpoint "model_voice_clone_quality_2k\checkpoint-1000"
+```
+
+### Larger GPU Example
+
+For a high-VRAM GPU such as A100/H100:
+
 ```bash
 python train.py \
+    --device cuda \
     --csv_path "metadata.csv" \
     --audio_dir "/workspace/data_tonghop/" \
-    --max_steps 100 \
-    --save_dir "basic_model"
-```
-
-#### H100-Optimized Training (Recommended)
-```bash
-python train.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --use_h100_config \
+    --save_dir "vietnamese_model" \
+    --max_samples 10000 \
     --max_steps 1000 \
-    --max_samples 1000 \
-    --save_dir "vietnamese_model"
+    --batch_size 4 \
+    --gradient_accumulation_steps 8 \
+    --bf16
 ```
 
-### 3. Inference
-```bash
-python inference.py \
-    --lora_path "vietnamese_model" \
-    --prompt "Xin chào, tôi là mô hình TTS tiếng Việt!" \
+## Inference
+
+```powershell
+.\.venv\Scripts\python.exe inference.py `
+    --lora_path "model_voice_clone_quality_2k" `
+    --prompt "Xin chào, tôi là mô hình TTS tiếng Việt!" `
+    --load_in_4bit `
+    --max_seq_length 2048 `
+    --bf16 `
+    --preset balanced `
+    --seed 42 `
     --save_audio
 ```
 
-## ⚙️ Configuration
+If you trained with `--save_lora_only`, use the LoRA directory directly. If you saved a merged model, use the `_merged` directory.
 
-### Basic Config (Default)
-- Batch size: 1, LoRA rank: 64, Seq length: 2048
-- Training steps: 60, Learning rate: 2e-4
+## Troubleshooting
 
-### H100 Config (`--use_h100_config`)
-- Batch size: 4×8=32, LoRA rank: 128, Seq length: 4096  
-- Training steps: 1000, Learning rate: 3e-4
-- BFloat16 + TF32 optimization
+### CUDA Not Available
 
-## 📊 Your Dataset Status
-✅ **156,344 Vietnamese sentences**  
-✅ **296,905 audio files**  
-✅ **100% vocabulary coverage**  
-✅ **Perfect audio format** (24kHz, numpy arrays)
+If `torch.cuda.is_available()` is `False` but `nvidia-smi` shows the GPU:
 
-## 🎯 Training Strategies
-
-### Strategy 1: Quick Test (1K samples)
-Test training setup and model quality with small dataset.
-
-### Strategy 2: Progressive Training (5K → 10K → 20K)
-Gradually increase dataset size to find optimal memory usage.
-
-### Strategy 3: Full Dataset Training (156K samples)
-Train with entire dataset using batch processing.
-
-## 🎯 Recommended Commands
-
-### Strategy 1: Quick Test (1K samples)
-```bash
-python train.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --use_h100_config \
-    --max_steps 50 \
-    --max_samples 1000 \
-    --save_dir "test_model"
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-gpu.txt
 ```
 
-### Strategy 2: Progressive Training
-```bash
-# Start with 5K samples
-python train.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --use_h100_config \
-    --max_steps 500 \
-    --max_samples 5000 \
-    --save_dir "model_5k"
+### Hugging Face Download Fails
 
-# If successful, try 10K samples
-python train.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --use_h100_config \
-    --max_steps 1000 \
-    --max_samples 10000 \
-    --save_dir "model_10k"
+The first training run downloads `unsloth/orpheus-3b-0.1-ft` or its 4-bit variant. Make sure internet access to `huggingface.co` is allowed.
 
-# If successful, try 20K samples
-python train.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --use_h100_config \
-    --max_steps 2000 \
-    --max_samples 20000 \
-    --save_dir "model_20k"
+### CUDA Out Of Memory
+
+RTX 3050 4GB is very tight for Orpheus 3B. Use:
+
+```powershell
+--batch_size 1 --gradient_accumulation_steps 8 --load_in_4bit --max_seq_length 2048 --lora_rank 16 --bf16 --low_vram --save_lora_only
 ```
 
-### Strategy 3: Full Dataset Training (156K samples)
-```bash
-python train_full_dataset.py \
-    --csv_path "metadata.csv" \
-    --audio_dir "/workspace/data_tonghop/" \
-    --batch_size 2000 \
-    --total_steps 5000 \
-    --checkpoint_dir "full_vietnamese_model"
+If it still OOMs, reduce `--max_seq_length` to `1024` and keep `--max_samples` small for testing.
+
+### Check Installed Packages
+
+```powershell
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m bitsandbytes
+.\.venv\Scripts\python.exe -c "import unsloth, triton; print('ok')"
 ```
 
-## 🔧 Troubleshooting
+## Dataset Format
 
-### Memory Issues
-```bash
-# Reduce samples (most effective)
-python train.py ... --max_samples 500
+Expected CSV columns:
 
-# Reduce batch size
-python train.py ... --batch_size 2
-
-# Use basic config instead
-python train.py ... # (without --use_h100_config)
+```csv
+uuid,sentence
+audio_001.wav,Xin chào...
 ```
 
-### Audio Issues
-- Check `--audio_dir` path exists
-- Verify CSV format: `uuid,sentence`
-- Ensure audio files are .wav format
-
-## 📈 Expected Performance
-
-### H100 Training
-- **Memory**: ~25-35 GB (of 80 GB)
-- **Speed**: ~4-8 steps/minute  
-- **Quality**: High (LoRA rank 128, 100% vocab coverage)
-- **Time**: ~2-4 hours for 1000 steps
-
-### Results
-- Perfect Vietnamese pronunciation
-- Natural intonation and rhythm
-- Support for complex Vietnamese texts with diacritics
-
----
-
-**🎉 Ready to train your Vietnamese TTS model!**
+Audio files should exist under `data_tonghop/`.

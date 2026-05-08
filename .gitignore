@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Local datasets and generated training outputs
+data_tonghop/
+gpu_test_model/
+generated_audio/
+full_dataset_model/
+full_dataset_model_merged/
+model_*/
+checkpoint-*/
+runs/
+wandb/
+
+# Hugging Face / dataset caches
+.cache/
+.hf_cache/
+_unsloth_temporary_saved_buffers/
+unsloth_compiled_cache/

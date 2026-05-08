@@ -104,6 +104,31 @@ INFERENCE_CONFIG = {
     "use_cache": False,  # Disabled for stability
 }
 
+# Inference presets. CLI values override these presets.
+INFERENCE_PRESETS = {
+    # More stable output for short Vietnamese prompts and low-VRAM GPUs.
+    "stable": {
+        "max_new_tokens": 900,
+        "temperature": 0.45,
+        "top_p": 0.85,
+        "repetition_penalty": 1.08,
+    },
+    # Good first choice for normal testing.
+    "balanced": {
+        "max_new_tokens": 1000,
+        "temperature": 0.55,
+        "top_p": 0.9,
+        "repetition_penalty": 1.05,
+    },
+    # More variation, but may produce less consistent pronunciation.
+    "expressive": {
+        "max_new_tokens": 1200,
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "repetition_penalty": 1.02,
+    },
+}
+
 # Vietnamese prompts for testing
 VIETNAMESE_PROMPTS = [
     "Xin chào, tôi là Orpheus. Tôi có thể nói tiếng Việt rất tự nhiên.",

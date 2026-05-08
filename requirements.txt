@@ -1,8 +1,8 @@
 # Core ML libraries
 torch>=2.0.0
-transformers>=4.55.4
+transformers>=4.55.4,<5.0.0
 datasets>=3.4.1,<4.0.0
-huggingface_hub>=0.34.0
+huggingface_hub>=0.34.0,<1.0
 
 # Unsloth and related packages
 unsloth
@@ -10,7 +10,8 @@ bitsandbytes
 accelerate
 peft
 trl
-triton
+triton; sys_platform != "win32"
+triton-windows; sys_platform == "win32"
 cut_cross_entropy
 unsloth_zoo
 
@@ -22,7 +23,7 @@ sentencepiece
 protobuf
 
 # Data processing and utilities
-numpy
+numpy>=1.26,<3.0
 scipy
 pandas
 psutil

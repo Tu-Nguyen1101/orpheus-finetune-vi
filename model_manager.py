@@ -4,14 +4,33 @@ Model management module for Orpheus TTS
 Handles model loading, initialization, and saving
 """
 
-# Import unsloth first to avoid warnings
-import unsloth
-from unsloth import FastLanguageModel
 import torch
 from typing import Tuple, Optional
 
 from config import MODEL_CONFIG, LORA_CONFIG, MODEL_PATHS
 from utils import get_gpu_memory_stats, print_memory_stats
+
+FastLanguageModel = None
+
+
+def get_fast_language_model():
+    """Import Unsloth lazily so CLI checks can run before dependencies exist."""
+    global FastLanguageModel
+
+    if FastLanguageModel is not None:
+        return FastLanguageModel
+
+    try:
+        import unsloth  # noqa: F401 - Unsloth must be imported before transformers internals.
+        from unsloth import FastLanguageModel as _FastLanguageModel
+    except ImportError as exc:
+        raise ImportError(
+            "Unsloth is required for training/inference. Install the GPU dependencies "
+            "before running this command."
+        ) from exc
+
+    FastLanguageModel = _FastLanguageModel
+    return FastLanguageModel
 
 
 class OrpheusModelManager:
@@ -46,6 +65,7 @@ class OrpheusModelManager:
         """
         print("Loading base model...")
         print_memory_stats("Before model loading")
+        fast_language_model = get_fast_language_model()
         
         # Use config values as defaults
         model_name = model_name or MODEL_CONFIG["model_name"]
@@ -53,7 +73,7 @@ class OrpheusModelManager:
         dtype = dtype if dtype is not None else MODEL_CONFIG["dtype"]
         load_in_4bit = load_in_4bit if load_in_4bit is not None else MODEL_CONFIG["load_in_4bit"]
         
-        self.model, self.tokenizer = FastLanguageModel.from_pretrained(
+        self.model, self.tokenizer = fast_language_model.from_pretrained(
             model_name=model_name,
             max_seq_length=max_seq_length,
             dtype=dtype,
@@ -101,11 +121,12 @@ class OrpheusModelManager:
         
         print("Adding LoRA adapters...")
         print_memory_stats("Before LoRA")
+        fast_language_model = get_fast_language_model()
         
         # Use config values as defaults
         config = LORA_CONFIG
         
-        self.model = FastLanguageModel.get_peft_model(
+        self.model = fast_language_model.get_peft_model(
             self.model,
             r=r or config["r"],
             target_modules=target_modules or config["target_modules"],
@@ -156,7 +177,8 @@ class OrpheusModelManager:
             raise ValueError("Model must be loaded first")
         
         print("Preparing model for inference...")
-        FastLanguageModel.for_inference(self.model)  # Enable native 2x faster inference
+        fast_language_model = get_fast_language_model()
+        fast_language_model.for_inference(self.model)  # Enable native 2x faster inference
         self.is_inference_mode = True
         print("Model ready for inference")
     
@@ -247,12 +269,23 @@ class OrpheusModelManager:
         
         print("Merged model pushed to Hub successfully")
     
-    def load_lora_model(self, lora_path: str):
+    def load_lora_model(self,
+                        lora_path: str,
+                        model_name: Optional[str] = None,
+                        max_seq_length: Optional[int] = None,
+                        dtype: Optional[torch.dtype] = None,
+                        load_in_4bit: Optional[bool] = None,
+                        token: Optional[str] = None):
         """
         Load a saved LoRA model
         
         Args:
             lora_path: Path to the saved LoRA model
+            model_name: Base model name to pair with the adapter
+            max_seq_length: Maximum sequence length for inference
+            dtype: Model dtype
+            load_in_4bit: Whether to load the base model in 4-bit mode
+            token: Hugging Face token for gated models
         """
         print(f"Loading LoRA model from {lora_path}...")
         
@@ -267,7 +300,13 @@ class OrpheusModelManager:
             try:
                 # Load base model first
                 print("📂 Loading base model...")
-                self.load_base_model(max_seq_length=4096)
+                self.load_base_model(
+                    model_name=model_name,
+                    max_seq_length=max_seq_length or 2048,
+                    dtype=dtype,
+                    load_in_4bit=True if load_in_4bit is None else load_in_4bit,
+                    token=token,
+                )
                 
                 # Load LoRA adapters using PEFT
                 print("🔧 Loading LoRA adapters...")
@@ -290,29 +329,48 @@ class OrpheusModelManager:
             except Exception as peft_e:
                 print(f"❌ Failed to load PEFT adapters: {peft_e}")
                 print("🔄 Falling back to base model only...")
-                self.load_base_model(max_seq_length=4096)
+                self.load_base_model(
+                    model_name=model_name,
+                    max_seq_length=max_seq_length or 2048,
+                    dtype=dtype,
+                    load_in_4bit=True if load_in_4bit is None else load_in_4bit,
+                    token=token,
+                )
         
         elif os.path.exists(os.path.join(lora_path, "pytorch_model.bin")):
             print("📦 Detected pytorch_model.bin - attempting direct load...")
             
             try:
                 # Try loading as complete model
-                self.model, self.tokenizer = FastLanguageModel.from_pretrained(
+                fast_language_model = get_fast_language_model()
+                self.model, self.tokenizer = fast_language_model.from_pretrained(
                     model_name=lora_path,
-                    max_seq_length=4096,
-                    dtype=None,
-                    load_in_4bit=False,
+                    max_seq_length=max_seq_length or 2048,
+                    dtype=dtype,
+                    load_in_4bit=True if load_in_4bit is None else load_in_4bit,
                 )
                 print("✅ Successfully loaded complete model")
                 
             except Exception as e:
                 print(f"❌ Failed to load as complete model: {e}")
                 print("🔄 Falling back to base model...")
-                self.load_base_model(max_seq_length=4096)
+                self.load_base_model(
+                    model_name=model_name,
+                    max_seq_length=max_seq_length or 2048,
+                    dtype=dtype,
+                    load_in_4bit=True if load_in_4bit is None else load_in_4bit,
+                    token=token,
+                )
         
         else:
             print("❓ Unknown checkpoint format - using base model")
-            self.load_base_model(max_seq_length=4096)
+            self.load_base_model(
+                model_name=model_name,
+                max_seq_length=max_seq_length or 2048,
+                dtype=dtype,
+                load_in_4bit=True if load_in_4bit is None else load_in_4bit,
+                token=token,
+            )
         
         # Always ensure pad token is set
         from config import TOKEN_CONFIG

@@ -7,7 +7,6 @@ Handles dataset loading, preprocessing, and tokenization
 from datasets import load_dataset, Dataset
 from typing import Dict, Any, Optional, List, Generator
 import torch
-from snac import SNAC
 import pandas as pd
 import librosa
 import os
@@ -15,6 +14,7 @@ import numpy as np
 from collections import Counter
 import psutil
 import gc
+from pandas.errors import ParserError
 
 from config import DATASET_CONFIG, TOKEN_CONFIG
 from utils import tokenise_audio, remove_duplicate_frames, load_snac_model
@@ -50,6 +50,68 @@ class OrpheusDataProcessor:
     def should_trigger_gc(self, threshold_gb: float = 2.0) -> bool:
         """Check if we should trigger garbage collection"""
         return self.get_available_memory_gb() < threshold_gb
+
+    def read_metadata_csv(self, csv_path: str, text_column: str, audio_column: str) -> pd.DataFrame:
+        """
+        Read metadata CSV, falling back to first-comma parsing for unquoted text.
+
+        The local metadata file stores `uuid,sentence`, but sentences may contain
+        commas without CSV quoting. In that case, the first comma separates the
+        audio filename and the rest of the line is the sentence.
+        """
+        try:
+            return pd.read_csv(csv_path)
+        except ParserError as exc:
+            print(f"⚠️  Standard CSV parsing failed: {exc}")
+            print("🔧 Falling back to first-comma metadata parsing...")
+
+        rows = []
+        skipped_bad_audio = 0
+        with open(csv_path, "r", encoding="utf-8-sig") as file:
+            header = file.readline().strip().split(",", 1)
+            has_header = len(header) == 2 and header[0] == audio_column and header[1] == text_column
+
+            if not has_header and len(header) == 2:
+                audio_filename = header[0].strip()
+                if audio_filename.lower().endswith(".wav"):
+                    rows.append({
+                        audio_column: audio_filename,
+                        text_column: header[1].strip(),
+                    })
+                else:
+                    skipped_bad_audio += 1
+
+            for line_number, line in enumerate(file, start=2):
+                line = line.strip()
+                if not line:
+                    continue
+
+                if "," not in line:
+                    print(f"Warning: Skipping metadata line {line_number}: missing comma separator")
+                    continue
+
+                audio_filename, text = line.split(",", 1)
+                audio_filename = audio_filename.strip()
+                text = text.strip()
+
+                if not audio_filename or not text:
+                    print(f"Warning: Skipping metadata line {line_number}: empty audio or text field")
+                    continue
+
+                if not audio_filename.lower().endswith(".wav"):
+                    skipped_bad_audio += 1
+                    continue
+
+                rows.append({
+                    audio_column: audio_filename,
+                    text_column: text,
+                })
+
+        df = pd.DataFrame(rows, columns=[audio_column, text_column])
+        if skipped_bad_audio:
+            print(f"Warning: Skipped {skipped_bad_audio} metadata rows with invalid audio filenames")
+        print(f"Loaded {len(df)} rows using fallback metadata parser")
+        return df
     
     def load_dataset(self, dataset_name: Optional[str] = None, split: Optional[str] = None) -> Dataset:
         """
@@ -106,7 +168,7 @@ class OrpheusDataProcessor:
         print(f"Chunk size: {chunk_size}")
         
         # Read CSV metadata only (lightweight)
-        df = pd.read_csv(csv_path)
+        df = self.read_metadata_csv(csv_path, text_column, audio_column)
         total_samples = len(df)
         print(f"Found {total_samples} entries in CSV")
         
@@ -179,7 +241,7 @@ class OrpheusDataProcessor:
         print(f"Audio directory: {audio_dir}")
         
         # Read CSV
-        df = pd.read_csv(csv_path)
+        df = self.read_metadata_csv(csv_path, text_column, audio_column)
         print(f"Found {len(df)} entries in CSV")
         
         # Limit samples to avoid OOM

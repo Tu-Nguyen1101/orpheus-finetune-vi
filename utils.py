@@ -4,9 +4,7 @@ Utility functions for audio processing and token manipulation
 """
 
 import torch
-import torchaudio.transforms as T
-from snac import SNAC
-from typing import List, Tuple, Optional
+from typing import Any, List, Tuple, Optional
 import locale
 import numpy as np
 
@@ -16,7 +14,7 @@ from config import AUDIO_CONFIG, TOKEN_CONFIG, AUDIO_OFFSETS
 locale.getpreferredencoding = lambda: "UTF-8"
 
 
-def load_snac_model(device: str = "cuda") -> SNAC:
+def load_snac_model(device: str = "cuda") -> Any:
     """
     Load the SNAC model for audio tokenization
     
@@ -26,11 +24,16 @@ def load_snac_model(device: str = "cuda") -> SNAC:
     Returns:
         SNAC model instance
     """
+    try:
+        from snac import SNAC
+    except ImportError as exc:
+        raise ImportError("SNAC is required for audio tokenization. Install project requirements first.") from exc
+
     snac_model = SNAC.from_pretrained(AUDIO_CONFIG["snac_model_name"])
     return snac_model.to(device)
 
 
-def tokenise_audio(waveform, ds_sample_rate: int, snac_model: SNAC) -> List[int]:
+def tokenise_audio(waveform, ds_sample_rate: int, snac_model: Any) -> List[int]:
     """
     Tokenize audio waveform using SNAC model
     
@@ -42,6 +45,11 @@ def tokenise_audio(waveform, ds_sample_rate: int, snac_model: SNAC) -> List[int]
     Returns:
         List of audio tokens
     """
+    try:
+        import torchaudio.transforms as T
+    except Exception as exc:
+        raise ImportError("torchaudio is required for audio tokenization. Reinstall CUDA-matched torchaudio.") from exc
+
     # Convert to torch tensor if it's numpy array
     if isinstance(waveform, np.ndarray):
         waveform = torch.from_numpy(waveform)
@@ -121,7 +129,7 @@ def remove_duplicate_frames(codes_list: List[int]) -> Tuple[List[int], int]:
     return result, removed_frames
 
 
-def redistribute_codes(code_list: List[int], snac_model: SNAC) -> torch.Tensor:
+def redistribute_codes(code_list: List[int], snac_model: Any) -> torch.Tensor:
     """
     Redistribute codes back to audio format and decode
     
@@ -136,7 +144,7 @@ def redistribute_codes(code_list: List[int], snac_model: SNAC) -> torch.Tensor:
     layer_2 = []
     layer_3 = []
     
-    for i in range((len(code_list) + 1) // 7):
+    for i in range(len(code_list) // 7):
         layer_1.append(code_list[7*i])
         layer_2.append(code_list[7*i+1] - AUDIO_OFFSETS["layer_2_first"])
         layer_3.append(code_list[7*i+2] - AUDIO_OFFSETS["layer_3_first"])
@@ -174,7 +182,22 @@ def process_generated_tokens(generated_ids: torch.Tensor) -> List[List[int]]:
         List of processed code lists
     """
     token_to_find = TOKEN_CONFIG["start_of_speech"]
-    token_to_remove = TOKEN_CONFIG["end_of_speech"]
+    stop_tokens = {
+        TOKEN_CONFIG["end_of_speech"],
+        TOKEN_CONFIG["end_of_ai"],
+        TOKEN_CONFIG["pad_token"],
+    }
+    audio_offset = TOKEN_CONFIG["audio_offset"]
+    codebook_size = 4096
+    expected_ranges = [
+        (0, codebook_size),
+        (AUDIO_OFFSETS["layer_2_first"], AUDIO_OFFSETS["layer_2_first"] + codebook_size),
+        (AUDIO_OFFSETS["layer_3_first"], AUDIO_OFFSETS["layer_3_first"] + codebook_size),
+        (AUDIO_OFFSETS["layer_3_second"], AUDIO_OFFSETS["layer_3_second"] + codebook_size),
+        (AUDIO_OFFSETS["layer_2_second"], AUDIO_OFFSETS["layer_2_second"] + codebook_size),
+        (AUDIO_OFFSETS["layer_3_third"], AUDIO_OFFSETS["layer_3_third"] + codebook_size),
+        (AUDIO_OFFSETS["layer_3_fourth"], AUDIO_OFFSETS["layer_3_fourth"] + codebook_size),
+    ]
 
     # Find the last occurrence of start_of_speech token
     token_indices = (generated_ids == token_to_find).nonzero(as_tuple=True)
@@ -185,20 +208,23 @@ def process_generated_tokens(generated_ids: torch.Tensor) -> List[List[int]]:
     else:
         cropped_tensor = generated_ids
 
-    # Remove end_of_speech tokens
-    processed_rows = []
-    for row in cropped_tensor:
-        masked_row = row[row != token_to_remove]
-        processed_rows.append(masked_row)
-
-    # Process codes
     code_lists = []
-    for row in processed_rows:
-        row_length = row.size(0)
-        new_length = (row_length // 7) * 7
-        trimmed_row = row[:new_length]
-        trimmed_row = [t.item() - TOKEN_CONFIG["audio_offset"] for t in trimmed_row]
-        code_lists.append(trimmed_row)
+    for row in cropped_tensor:
+        relative_codes = []
+        expected_index = 0
+
+        for token in row.tolist():
+            if token in stop_tokens:
+                break
+
+            relative = token - audio_offset
+            low, high = expected_ranges[expected_index]
+            if low <= relative < high:
+                relative_codes.append(relative)
+                expected_index = (expected_index + 1) % 7
+
+        new_length = (len(relative_codes) // 7) * 7
+        code_lists.append(relative_codes[:new_length])
 
     return code_lists
 
@@ -225,7 +251,12 @@ def prepare_inference_input(prompts: List[str], tokenizer, chosen_voice: Optiona
 
     # Add special tokens
     start_token = torch.tensor([[TOKEN_CONFIG["start_of_human"]]], dtype=torch.int64)
-    end_tokens = torch.tensor([[TOKEN_CONFIG["end_of_text"], TOKEN_CONFIG["end_of_human"]]], dtype=torch.int64)
+    end_tokens = torch.tensor([[
+        TOKEN_CONFIG["end_of_text"],
+        TOKEN_CONFIG["end_of_human"],
+        TOKEN_CONFIG["start_of_ai"],
+        TOKEN_CONFIG["start_of_speech"],
+    ]], dtype=torch.int64)
 
     all_modified_input_ids = []
     for input_ids in all_input_ids:

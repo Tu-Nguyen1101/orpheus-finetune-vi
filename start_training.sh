@@ -8,7 +8,7 @@ echo "=================================================="
 
 # Default configuration
 CSV_PATH="metadata.csv"
-AUDIO_DIR="/workspace/data_tonghop/"
+AUDIO_DIR="./data_tonghop/"
 SAVE_DIR="full_dataset_model"
 
 # Check if files exist

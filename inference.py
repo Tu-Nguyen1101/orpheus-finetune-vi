@@ -10,7 +10,7 @@ import numpy as np
 from IPython.display import display, Audio
 import torchaudio
 
-from config import INFERENCE_CONFIG, DEFAULT_PROMPTS
+from config import INFERENCE_CONFIG, INFERENCE_PRESETS, DEFAULT_PROMPTS
 from model_manager import create_model_manager
 from utils import (
     load_snac_model, 
@@ -40,7 +40,7 @@ class OrpheusInference:
     def load_model(self, 
                    model_name: Optional[str] = None,
                    lora_path: Optional[str] = None,
-                   use_fp16: bool = True,
+                   use_fp16: bool = False,
                    **model_kwargs):
         """
         Load model for inference
@@ -66,15 +66,18 @@ class OrpheusInference:
             
             try:
                 # Load the trained model directly from checkpoint
-                self.model_manager.load_lora_model(model_path)
+                self.model_manager.load_lora_model(
+                    model_path,
+                    model_name=model_name,
+                    **model_kwargs,
+                )
             except Exception as e:
                 print(f"Failed to load from checkpoint: {e}")
                 print("Loading base model + applying LoRA...")
                 # Fallback to base model
                 self.model_manager.prepare_for_training(model_name=model_name or "unsloth/orpheus-3b-0.1-ft", **model_kwargs)
         else:
-            # Load base model and prepare for training (with LoRA)
-            self.model_manager.prepare_for_training(model_name=model_name, **model_kwargs)
+            self.model_manager.load_base_model(model_name=model_name, **model_kwargs)
         
         # Convert to FP16 if requested
         if use_fp16 and self.model_manager.model is not None:
@@ -268,7 +271,21 @@ class OrpheusInference:
                 if audio_data.dim() == 1:
                     audio_data = audio_data.unsqueeze(0)
                 
-                torchaudio.save(output_path, audio_data, sample_rate)
+                try:
+                    torchaudio.save(output_path, audio_data, sample_rate)
+                except Exception as torchaudio_error:
+                    try:
+                        import soundfile as sf
+
+                        audio_np = audio_data.detach().cpu().numpy()
+                        if audio_np.ndim == 2:
+                            audio_np = audio_np.T
+                        sf.write(output_path, audio_np, sample_rate)
+                    except Exception as soundfile_error:
+                        raise RuntimeError(
+                            f"torchaudio.save failed: {torchaudio_error}; "
+                            f"soundfile fallback failed: {soundfile_error}"
+                        ) from soundfile_error
                 print(f"Saved audio {i+1} to {output_path}")
                 
             except Exception as e:
@@ -336,6 +353,12 @@ def parse_args():
                        help="Path to LoRA adapters")
     parser.add_argument("--load_in_4bit", action="store_true",
                        help="Load model in 4bit mode")
+    parser.add_argument("--max_seq_length", type=int, default=2048,
+                       help="Maximum sequence length for model loading")
+    parser.add_argument("--fp16", action="store_true",
+                       help="Load/convert model in FP16")
+    parser.add_argument("--bf16", action="store_true",
+                       help="Load model in BF16")
     
     # Input arguments
     parser.add_argument("--prompt", type=str, default=None,
@@ -348,12 +371,16 @@ def parse_args():
     # Generation arguments
     parser.add_argument("--max_new_tokens", type=int, default=None,
                        help="Maximum new tokens to generate")
+    parser.add_argument("--preset", type=str, choices=sorted(INFERENCE_PRESETS.keys()), default=None,
+                       help="Generation preset. Explicit generation flags override it")
     parser.add_argument("--temperature", type=float, default=None,
                        help="Generation temperature")
     parser.add_argument("--top_p", type=float, default=None,
                        help="Top-p sampling parameter")
     parser.add_argument("--repetition_penalty", type=float, default=None,
                        help="Repetition penalty")
+    parser.add_argument("--seed", type=int, default=None,
+                       help="Random seed for repeatable generation")
     
     # Output arguments
     parser.add_argument("--output_dir", type=str, default="generated_audio",
@@ -385,11 +412,18 @@ def main():
     model_kwargs = {}
     if args.load_in_4bit:
         model_kwargs["load_in_4bit"] = True
+    if args.max_seq_length:
+        model_kwargs["max_seq_length"] = args.max_seq_length
+    if args.bf16:
+        model_kwargs["dtype"] = torch.bfloat16
+    elif args.fp16:
+        model_kwargs["dtype"] = torch.float16
     
     # Load model
     inference.load_model(
         model_name=args.model_name,
         lora_path=args.lora_path,
+        use_fp16=args.fp16,
         **model_kwargs
     )
     
@@ -408,15 +442,17 @@ def main():
             print(f"  {i+1}: {prompt}")
     
     # Prepare generation kwargs
-    generation_kwargs = {}
-    if args.max_new_tokens:
+    generation_kwargs = INFERENCE_PRESETS.get(args.preset, {}).copy()
+    if args.max_new_tokens is not None:
         generation_kwargs["max_new_tokens"] = args.max_new_tokens
-    if args.temperature:
+    if args.temperature is not None:
         generation_kwargs["temperature"] = args.temperature
-    if args.top_p:
+    if args.top_p is not None:
         generation_kwargs["top_p"] = args.top_p
-    if args.repetition_penalty:
+    if args.repetition_penalty is not None:
         generation_kwargs["repetition_penalty"] = args.repetition_penalty
+    if args.seed is not None:
+        generation_kwargs["seed"] = args.seed
     
     try:
         if args.save_audio:
