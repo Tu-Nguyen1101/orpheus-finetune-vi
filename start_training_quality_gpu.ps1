@@ -14,6 +14,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 # Longer quality run for RTX 3050 4GB.
 # Quality comes mainly from more samples and more optimizer steps.

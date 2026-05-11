@@ -22,7 +22,8 @@ def main():
     print(f"   🎵 Audio: {audio_dir}")
     print(f"   📊 Dataset: Full (no sample limit)")
     print(f"   ⚙️  Epochs: 5")
-    print(f"   💾 Output: full_dataset_model")
+    save_dir = "model_training/full_dataset_model"
+    print(f"   💾 Output: {save_dir}")
     print("=" * 60)
     
     # Check if files exist
@@ -38,7 +39,8 @@ def main():
     
     # Import and run training
     try:
-        from train import OrpheusTrainer
+        from train import OrpheusTrainer, resolve_save_dir
+        save_dir = resolve_save_dir("full_dataset_model")
         
         print("🔄 Starting training...")
         trainer = OrpheusTrainer(device="cuda")
@@ -53,12 +55,12 @@ def main():
         )
         
         # Save model
-        trainer.save_model("full_dataset_model", save_merged=True)
+        trainer.save_model(save_dir, save_merged=True)
         
         print("\n🎉 Training completed successfully!")
         print("📁 Models saved:")
-        print("   📦 LoRA model: full_dataset_model/")
-        print("   🔄 Merged model: full_dataset_model_merged/")
+        print(f"   📦 LoRA model: {save_dir}/")
+        print(f"   🔄 Merged model: {save_dir}_merged/")
         print("💡 Use merged model for inference")
         
     except ImportError as e:

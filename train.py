@@ -12,12 +12,14 @@ from pathlib import Path
 # Fix tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-from config import TRAINING_CONFIG, MODEL_CONFIG, LORA_CONFIG
+from config import TRAINING_CONFIG, MODEL_CONFIG, LORA_CONFIG, INFERENCE_PRESETS
 from model_manager import create_model_manager
 from data_processor import create_data_processor, print_tokenization_info
 from utils import print_memory_stats
 
 MODEL_OUTPUT_ROOT = "model_training"
+SAMPLE_AUDIO_ROOT = "audio_model_training"
+DEFAULT_SAMPLE_PROMPT = "Xin chào, đây là audio mẫu sau khi huấn luyện xong mô hình."
 
 
 def get_transformers_training_classes():
@@ -45,6 +47,41 @@ def resolve_save_dir(save_dir: Optional[str]) -> str:
         return str(requested_dir)
 
     return str(output_root / requested_dir)
+
+
+def create_training_sample_audio(
+    trainer: "OrpheusTrainer",
+    save_dir: str,
+    sample_audio_dir: str = SAMPLE_AUDIO_ROOT,
+    sample_prompt: str = DEFAULT_SAMPLE_PROMPT,
+    sample_seed: int = 42,
+) -> str:
+    """Generate one sample WAV from the trained model."""
+    output_dir = Path(sample_audio_dir) / Path(save_dir).name
+    output_path = output_dir / "audio.wav"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Drop Trainer internals before inference so optimizer/dataloader memory can be reclaimed.
+    trainer.trainer = None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    from inference import OrpheusInference
+
+    inference = OrpheusInference(device=trainer.device)
+    inference.model_manager = trainer.model_manager
+    inference.model_manager.prepare_for_inference()
+
+    generation_kwargs = INFERENCE_PRESETS.get("stable", {}).copy()
+    audio_samples = inference.generate_audio(
+        sample_prompt,
+        seed=sample_seed,
+        **generation_kwargs,
+    )
+    inference.save_audio(audio_samples[:1], [str(output_path)])
+    inference.cleanup()
+
+    return str(output_path)
 
 
 class OrpheusTrainer:
@@ -341,6 +378,14 @@ def parse_args():
                        help="Save LoRA adapters only; skip merged 16-bit model save")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None,
                        help="Resume training from a Trainer checkpoint directory")
+    parser.add_argument("--sample_audio_dir", type=str, default=SAMPLE_AUDIO_ROOT,
+                       help=f"Directory for the post-training sample audio (default: {SAMPLE_AUDIO_ROOT})")
+    parser.add_argument("--sample_prompt", type=str, default=DEFAULT_SAMPLE_PROMPT,
+                       help="Prompt used to generate the post-training sample audio")
+    parser.add_argument("--sample_seed", type=int, default=42,
+                       help="Random seed for the post-training sample audio")
+    parser.add_argument("--skip_sample_audio", action="store_true",
+                       help="Skip generating audio_model_training/<model_name>/audio.wav after training")
 
     # Optional model overrides
     parser.add_argument("--max_seq_length", type=int, default=None,
@@ -532,12 +577,29 @@ def main():
         
         # Save model
         trainer.save_model(save_dir, save_merged=not args.save_lora_only)
+
+        sample_audio_path = None
+        if not args.skip_sample_audio:
+            print("\nGenerating post-training sample audio...")
+            try:
+                sample_audio_path = create_training_sample_audio(
+                    trainer=trainer,
+                    save_dir=save_dir,
+                    sample_audio_dir=args.sample_audio_dir,
+                    sample_prompt=args.sample_prompt,
+                    sample_seed=args.sample_seed,
+                )
+                print(f"Sample audio saved to: {sample_audio_path}")
+            except Exception as sample_error:
+                print(f"Warning: failed to generate sample audio: {sample_error}")
         
         print("\n" + "=" * 50)
         print("🎉 Full Dataset Training Completed Successfully!")
         print(f"💾 Model saved to: {save_dir}")
         if not args.save_lora_only:
             print(f"🔧 Merged model for inference: {save_dir}_merged")
+        if sample_audio_path:
+            print(f"Sample audio: {sample_audio_path}")
         print("=" * 50)
         
     except Exception as e:

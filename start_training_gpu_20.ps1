@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 # Low-VRAM GPU smoke test for the local Windows machine.
 # This is intentionally conservative for RTX 3050 4GB.

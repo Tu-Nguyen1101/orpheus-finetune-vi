@@ -4,7 +4,7 @@ Training script for full dataset with batch processing
 Trains with all 156K samples in manageable batches
 """
 
-from train import OrpheusTrainer
+from train import OrpheusTrainer, resolve_save_dir
 import pandas as pd
 import argparse
 import os
@@ -24,7 +24,8 @@ def train_full_dataset(csv_path: str, audio_dir: str, batch_size: int = 2000,
         total_steps: Total training steps across all batches
         checkpoint_dir: Directory to save checkpoints
     """
-    
+    checkpoint_dir = resolve_save_dir(checkpoint_dir)
+
     print("🚀 Full Dataset Training with Batch Processing")
     print("=" * 60)
     

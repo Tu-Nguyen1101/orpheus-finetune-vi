@@ -46,7 +46,7 @@ TRAINING_CONFIG = {
     "tf32": True,
     "dataloader_num_workers": 8,
     "seed": 42,
-    "output_dir": "full_dataset_model",
+    "output_dir": "model_training/full_dataset_model",
     "report_to": "none",
     "save_total_limit": 5,              # Giữ 5 checkpoint gần nhất
     "load_best_model_at_end": False,    # Không cần eval dataset riêng  

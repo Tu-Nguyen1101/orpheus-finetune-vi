@@ -6,6 +6,7 @@ __pycache__/
 data_tonghop/
 gpu_test_model/
 generated_audio/
+audio_model_training/
 full_dataset_model/
 full_dataset_model_merged/
 model_*/

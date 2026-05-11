@@ -1,32 +1,24 @@
-param(
-    [string]$CsvPath = "metadata.csv",
-    [string]$AudioDir = ".\data_tonghop",
-    [string]$SaveDir = "model_training\model_voice_clone_100steps",
-    [int]$MaxSamples = 1000,
-    [int]$MaxSteps = 100
-)
-
 $ErrorActionPreference = "Stop"
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
-# Longer low-VRAM GPU run for RTX 3050 4GB.
-# Keeps the smoke-test output in gpu_test_model untouched.
+# Low-VRAM GPU smoke test for the local Windows machine.
+# This is intentionally conservative for RTX 3050 4GB.
 
+$CsvPath = "metadata.csv"
+$AudioDir = ".\data_tonghop"
+$SaveDir = "model_training\gpu_test_model"
+$MaxSamples = 200
+$MaxSteps = 20
 $Python = ".\.venv\Scripts\python.exe"
 
 if (-not (Test-Path $Python)) {
     $Python = "python"
 }
 
-Write-Host "Orpheus TTS - longer GPU training"
-Write-Host "================================="
+Write-Host "Orpheus TTS - GPU training smoke test"
+Write-Host "====================================="
 Write-Host "Python: $Python"
-Write-Host "CSV: $CsvPath"
-Write-Host "Audio: $AudioDir"
-Write-Host "Output: $SaveDir"
-Write-Host "Max samples: $MaxSamples"
-Write-Host "Max steps: $MaxSteps"
 
 if (-not (Test-Path $CsvPath)) {
     throw "CSV file not found: $CsvPath"
@@ -64,7 +56,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
-    Write-Host "Long GPU training completed. LoRA model saved to: $SaveDir"
+    Write-Host "GPU smoke test completed. LoRA model saved to: $SaveDir"
 } else {
-    throw "Long GPU training failed."
+    throw "GPU training failed."
 }

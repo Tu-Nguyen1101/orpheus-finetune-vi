@@ -180,7 +180,7 @@ python train.py \
     --save_audio
 ```
 
-Training saves relative `--save_dir` values under `model_training\`, so `--save_dir "model_1k"` is saved as `model_training\model_1k`. If you trained with `--save_lora_only`, use the LoRA directory directly. If you saved a merged model, use the `_merged` directory.
+Training saves relative `--save_dir` values under `model_training\`, so `--save_dir "model_1k"` is saved as `model_training\model_1k`. After training, a listening sample is generated at `audio_model_training\<model_name>\audio.wav`. If you trained with `--save_lora_only`, use the LoRA directory directly. If you saved a merged model, use the `_merged` directory.
 
 ## Troubleshooting
 

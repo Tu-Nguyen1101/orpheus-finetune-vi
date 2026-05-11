@@ -9,7 +9,7 @@ echo "=================================================="
 # Default configuration
 CSV_PATH="metadata.csv"
 AUDIO_DIR="./data_tonghop/"
-SAVE_DIR="full_dataset_model"
+SAVE_DIR="model_training/full_dataset_model"
 
 # Check if files exist
 if [ ! -f "$CSV_PATH" ]; then

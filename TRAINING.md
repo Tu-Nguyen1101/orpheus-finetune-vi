@@ -53,6 +53,7 @@ python train.py \
 After training completes:
 - `model_training/full_dataset_model/` - LoRA adapters
 - `model_training/full_dataset_model_merged/` - **Merged model for inference**
+- `audio_model_training/full_dataset_model/audio.wav` - sample audio for quick listening
 
 ## 🎤 Inference
 

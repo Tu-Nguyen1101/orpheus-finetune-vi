@@ -25,6 +25,27 @@ current_model_path: str = ""
 snac_model = None
 
 
+def save_wav(output_path: str, audio_data, sample_rate: int = 24000) -> None:
+    """Save audio as WAV, falling back when torchaudio requires TorchCodec."""
+    if hasattr(audio_data, "detach"):
+        audio_tensor = audio_data.detach().squeeze().to("cpu")
+    else:
+        audio_tensor = torch.tensor(audio_data).squeeze()
+
+    if audio_tensor.dim() == 1:
+        audio_tensor = audio_tensor.unsqueeze(0)
+
+    try:
+        torchaudio.save(output_path, audio_tensor, sample_rate)
+    except Exception:
+        import soundfile as sf
+
+        audio_np = audio_tensor.detach().cpu().numpy()
+        if audio_np.ndim == 2:
+            audio_np = audio_np.T
+        sf.write(output_path, audio_np, sample_rate)
+
+
 def initialize_model(model_path: str) -> str:
     """Initialize the Orpheus model"""
     global inference_engine, current_model_path
@@ -94,9 +115,7 @@ def text_to_speech(text: str,
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         temp_path = f"temp_audio_{timestamp}.wav"
         
-        # Convert to tensor and save
-        audio_tensor_save = torch.tensor(audio_data).unsqueeze(0)
-        torchaudio.save(temp_path, audio_tensor_save, 24000)
+        save_wav(temp_path, audio_data, 24000)
         
         return temp_path, f"✅ Generated audio for: {text[:50]}..."
         
@@ -165,8 +184,7 @@ def clone_voice_and_speak(text: str,
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = f"cloned_voice_{timestamp}.wav"
         
-        audio_tensor_save = torch.tensor(audio_data_out).unsqueeze(0)
-        torchaudio.save(output_path, audio_tensor_save, 24000)
+        save_wav(output_path, audio_data_out, 24000)
         
         return output_path, f"✅ Voice cloning completed for: {text[:50]}..."
         
@@ -578,8 +596,7 @@ def process_batch(batch_text: str) -> Optional[str]:
                         filename = f"batch_{i+1:03d}_{text[:20].replace(' ', '_')}.wav"
                         filepath = os.path.join(temp_dir, filename)
                         
-                        audio_tensor_save = torch.tensor(audio_data).unsqueeze(0)
-                        torchaudio.save(filepath, audio_tensor_save, 24000)
+                        save_wav(filepath, audio_data, 24000)
                         audio_files.append(filepath)
                 
                 except Exception as e:
