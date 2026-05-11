@@ -1,7 +1,7 @@
 param(
     [string]$CsvPath = "metadata.csv",
     [string]$AudioDir = ".\data_tonghop",
-    [string]$SaveDir = "model_voice_clone_100steps",
+    [string]$SaveDir = "model_training\model_voice_clone_100steps",
     [int]$MaxSamples = 1000,
     [int]$MaxSteps = 100
 )

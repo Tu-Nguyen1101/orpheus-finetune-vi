@@ -7,6 +7,7 @@ import torch
 from typing import Optional, Dict, Any
 import argparse
 import os
+from pathlib import Path
 
 # Fix tokenizer parallelism warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -15,6 +16,8 @@ from config import TRAINING_CONFIG, MODEL_CONFIG, LORA_CONFIG
 from model_manager import create_model_manager
 from data_processor import create_data_processor, print_tokenization_info
 from utils import print_memory_stats
+
+MODEL_OUTPUT_ROOT = "model_training"
 
 
 def get_transformers_training_classes():
@@ -28,6 +31,20 @@ def get_transformers_training_classes():
         ) from exc
 
     return TrainingArguments, Trainer, DataCollatorForSeq2Seq
+
+
+def resolve_save_dir(save_dir: Optional[str]) -> str:
+    """Resolve completed training outputs into the shared model output folder."""
+    requested_dir = Path(save_dir or "full_dataset_model")
+    output_root = Path(MODEL_OUTPUT_ROOT)
+
+    if requested_dir.is_absolute():
+        return str(requested_dir)
+
+    if requested_dir.parts and requested_dir.parts[0] == MODEL_OUTPUT_ROOT:
+        return str(requested_dir)
+
+    return str(output_root / requested_dir)
 
 
 class OrpheusTrainer:
@@ -319,7 +336,7 @@ def parse_args():
     parser.add_argument("--num_train_epochs", type=float, default=None,
                        help="Override number of training epochs")
     parser.add_argument("--save_dir", type=str, default=None,
-                       help="Directory to save the trained model (default: full_dataset_model)")
+                       help=f"Model name or directory to save under {MODEL_OUTPUT_ROOT} (default: full_dataset_model)")
     parser.add_argument("--save_lora_only", action="store_true",
                        help="Save LoRA adapters only; skip merged 16-bit model save")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None,
@@ -456,7 +473,8 @@ def main():
     trainer = OrpheusTrainer(device=args.device)
     
     # Prepare training kwargs (only override if specified)
-    save_dir = args.save_dir or "full_dataset_model"
+    save_dir = resolve_save_dir(args.save_dir)
+    os.makedirs(save_dir, exist_ok=True)
     training_kwargs = {"output_dir": save_dir}
     model_kwargs = {}
 

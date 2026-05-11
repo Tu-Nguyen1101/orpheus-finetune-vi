@@ -146,7 +146,7 @@ Resume a stopped run from the latest checkpoint:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start_training_quality_gpu.ps1 `
-    -ResumeFromCheckpoint "model_voice_clone_quality_2k\checkpoint-1000"
+    -ResumeFromCheckpoint "model_training\model_voice_clone_quality_2k\checkpoint-1000"
 ```
 
 ### Larger GPU Example
@@ -170,7 +170,7 @@ python train.py \
 
 ```powershell
 .\.venv\Scripts\python.exe inference.py `
-    --lora_path "model_voice_clone_quality_2k" `
+    --lora_path "model_training\model_voice_clone_quality_2k" `
     --prompt "Xin chào, tôi là mô hình TTS tiếng Việt!" `
     --load_in_4bit `
     --max_seq_length 2048 `
@@ -180,7 +180,7 @@ python train.py \
     --save_audio
 ```
 
-If you trained with `--save_lora_only`, use the LoRA directory directly. If you saved a merged model, use the `_merged` directory.
+Training saves relative `--save_dir` values under `model_training\`, so `--save_dir "model_1k"` is saved as `model_training\model_1k`. If you trained with `--save_lora_only`, use the LoRA directory directly. If you saved a merged model, use the `_merged` directory.
 
 ## Troubleshooting
 

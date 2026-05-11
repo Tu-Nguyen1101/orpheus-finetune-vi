@@ -32,7 +32,7 @@ TRAINING_CONFIG = {
     "num_train_epochs": 5,              # Train for 5 complete epochs
     "warmup_steps": 200,
     "learning_rate": 2e-4,
-    "output_dir": "full_dataset_model",
+    "output_dir": "model_training/full_dataset_model",
 }
 ```
 
@@ -45,20 +45,20 @@ python train.py \
     --max_samples 50000                 # Optional: Limit samples (None = full dataset)
     --batch_size 4                      # Optional: Override batch size
     --learning_rate 3e-4                # Optional: Override learning rate
-    --save_dir "my_model"               # Optional: Save directory
+    --save_dir "my_model"               # Optional: Saved under model_training/
 ```
 
 ## 📊 Training Output
 
 After training completes:
-- `full_dataset_model/` - LoRA adapters
-- `full_dataset_model_merged/` - **Merged model for inference**
+- `model_training/full_dataset_model/` - LoRA adapters
+- `model_training/full_dataset_model_merged/` - **Merged model for inference**
 
 ## 🎤 Inference
 
 ```bash
 # Test inference
-python inference.py --lora_path "full_dataset_model_merged" --prompt "Xin chào!"
+python inference.py --lora_path "model_training/full_dataset_model_merged" --prompt "Xin chào!"
 
 # Launch Gradio web interface
 python gradio_app.py
@@ -85,7 +85,7 @@ python train.py --csv_path "metadata.csv" --audio_dir "/workspace/data/" --max_s
 
 **Check Training:**
 ```bash
-tail -f full_dataset_model/trainer_state.json
+tail -f model_training/full_dataset_model/trainer_state.json
 ```
 
 ---

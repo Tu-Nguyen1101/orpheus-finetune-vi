@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 
 $CsvPath = "metadata.csv"
 $AudioDir = ".\data_tonghop"
-$SaveDir = "gpu_test_model"
+$SaveDir = "model_training\gpu_test_model"
 $MaxSamples = 200
 $MaxSteps = 20
 $Python = ".\.venv\Scripts\python.exe"
